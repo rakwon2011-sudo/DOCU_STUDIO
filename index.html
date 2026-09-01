@@ -53,6 +53,7 @@ textarea,input,button{font-family:inherit}
 .btn:hover{border-color:var(--gold); color:var(--gold)}
 .btn.primary{background:var(--gold); border-color:var(--gold); color:#221a08; font-weight:700}
 .btn.primary:hover{filter:brightness(1.08); color:#221a08}
+.btn.danger:hover{border-color:var(--act3); color:var(--act3)}
 
 /* ---------- layout ---------- */
 .wrap{max-width:1060px; margin:0 auto; padding:34px 28px 90px}
@@ -130,8 +131,13 @@ textarea{resize:vertical; min-height:64px}
 .seq-name{font-weight:700; font-size:15.5px}
 .seq-sub{font-size:12px; color:var(--sub); margin-top:1px}
 .seq-meta{display:flex; align-items:center; gap:14px; flex-shrink:0}
-.seq-min{font-size:12.5px; color:var(--faint)}
-.seq-min b{color:var(--gold); font-size:14px}
+.seq-min{font-size:12.5px; color:var(--faint); display:flex; align-items:center; gap:5px}
+.seq-min input{
+  width:58px; text-align:center; padding:5px 4px; font-size:13.5px;
+  color:var(--gold); font-weight:700; background:var(--bg2);
+  border:1px solid var(--line); border-radius:7px;
+}
+.seq-min input:focus{border-color:var(--gold)}
 .chev{color:var(--faint); transition:transform .25s; font-size:12px}
 .seq.open .chev{transform:rotate(180deg)}
 .check{
@@ -236,6 +242,7 @@ select:focus{border-color:var(--gold)}
   </div>
   <div class="top-actions">
     <span id="saveStamp" style="font-size:11.5px;color:var(--faint);align-self:center;white-space:nowrap"></span>
+    <button class="btn danger" id="btnReset" title="모든 내용을 지우고 새로 시작">🗑️ 초기화</button>
     <label class="btn" for="fileInput" role="button" tabindex="0" style="display:inline-block">📂 불러오기</label>
     <button class="btn" id="btnSave">💾 JSON 저장</button>
     <button class="btn primary" id="btnExport">📄 기획안 내보내기</button>
@@ -383,7 +390,7 @@ function buildActs(){
             <div class="seq-sub">${sq.sub}</div>
           </div>
           <div class="seq-meta">
-            <span class="seq-min"><b id="min${sq.n}">–</b> 분</span>
+            <span class="seq-min" onclick="event.stopPropagation()"><input type="number" min="0" step="0.5" data-k="min" data-n="${sq.n}" aria-label="${sq.n}장 러닝타임(분)"> 분</span>
             <div class="check" id="chk${sq.n}" onclick="toggleDone(${sq.n},event)">✓</div>
             <span class="chev">▼</span>
           </div>
@@ -479,10 +486,10 @@ function refreshMins(){
   FLAT.forEach(sq=>{
     const st = state.seqs[sq.n-1];
     const m = (st.min != null) ? st.min : recMin(total);
-    document.getElementById("min"+sq.n).textContent = fmt(m);
     document.getElementById("rec"+sq.n).textContent = `권장 약 ${fmt(recMin(total))}분 (전체의 12.5%)`;
-    const inp = document.querySelector(`input[data-k=min][data-n="${sq.n}"]`);
-    if(document.activeElement !== inp) inp.value = fmt(m);
+    document.querySelectorAll(`input[data-k=min][data-n="${sq.n}"]`).forEach(inp=>{
+      if(document.activeElement !== inp) inp.value = fmt(m);
+    });
   });
 }
 
@@ -577,7 +584,10 @@ document.addEventListener("input", e=>{
     const st = state.seqs[el.dataset.n-1];
     if(el.dataset.k==="min"){
       st.min = el.value==="" ? null : parseFloat(el.value);
-      document.getElementById("min"+el.dataset.n).textContent = fmt((st.min != null) ? st.min : recMin(state.runtime));
+      const v = fmt((st.min != null) ? st.min : recMin(state.runtime));
+      document.querySelectorAll(`input[data-k=min][data-n="${el.dataset.n}"]`).forEach(inp=>{
+        if(inp !== el) inp.value = v;
+      });
       buildTimeline();
     } else {
       st[el.dataset.k] = el.value;
@@ -602,6 +612,15 @@ document.getElementById("btnSave").onclick = ()=>{
   const name = (state.title||"다큐기획") + "_3막8장.json";
   download(name, JSON.stringify(state, null, 2), "application/json");
   toast("💾 JSON 파일로 저장했어요");
+};
+document.getElementById("btnReset").onclick = ()=>{
+  const ok = confirm("모든 내용을 지우고 새로 시작할까요?\n\n⚠️ 지금 작업 중인 내용이 모두 사라져요.\n필요한 내용은 먼저 [💾 JSON 저장]으로 백업해 두세요.");
+  if(!ok) return;
+  state.title = ""; state.logline = ""; state.question = ""; state.cast = ""; state.runtime = 60;
+  state.seqs = FLAT.map(s=>({n:s.n, title:"", content:"", interview:"", broll:"", archive:"", min:null, done:false, shots:[]}));
+  hydrate();
+  autosave();
+  toast("🗑️ 초기화 완료 — 새로 시작하세요");
 };
 document.getElementById("fileInput").onchange = e=>{
   const f = e.target.files[0]; if(!f) return;

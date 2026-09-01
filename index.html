@@ -236,7 +236,7 @@ select:focus{border-color:var(--gold)}
   </div>
   <div class="top-actions">
     <span id="saveStamp" style="font-size:11.5px;color:var(--faint);align-self:center;white-space:nowrap"></span>
-    <button class="btn" id="btnLoad">📂 불러오기</button>
+    <label class="btn" for="fileInput" role="button" tabindex="0" style="display:inline-block">📂 불러오기</label>
     <button class="btn" id="btnSave">💾 JSON 저장</button>
     <button class="btn primary" id="btnExport">📄 기획안 내보내기</button>
   </div>
@@ -297,7 +297,7 @@ select:focus{border-color:var(--gold)}
 </div>
 
 <div class="toast" id="toast"></div>
-<input type="file" id="fileInput" accept=".json" style="display:none">
+<input type="file" id="fileInput" accept=".json,application/json,text/plain" style="position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;clip:rect(0 0 0 0)">
 
 <script>
 /* ================= 데이터 정의 ================= */
@@ -450,7 +450,7 @@ function buildTimeline(){
   let sum = 0;
   FLAT.forEach(sq=>{
     const st = state.seqs[sq.n-1];
-    const m = st.min ?? recMin(total);
+    const m = (st.min != null) ? st.min : recMin(total);
     sum += m;
     const seg = document.createElement("div");
     seg.className = "tl-seg";
@@ -470,7 +470,7 @@ function buildTimeline(){
   // act labels widths
   const acts = document.getElementById("tlActs");
   const actSums = [0,0,0];
-  FLAT.forEach(sq=>{ actSums[sq.act-1] += state.seqs[sq.n-1].min ?? recMin(total); });
+  FLAT.forEach(sq=>{ actSums[sq.act-1] += ((state.seqs[sq.n-1].min != null) ? state.seqs[sq.n-1].min : recMin(total)); });
   acts.innerHTML = actSums.map((s,i)=>`<div style="flex:${Math.max(s,0.1)}">${i+1}막 · ${Math.round(s*10)/10}분</div>`).join("");
 }
 
@@ -478,7 +478,7 @@ function refreshMins(){
   const total = state.runtime || 60;
   FLAT.forEach(sq=>{
     const st = state.seqs[sq.n-1];
-    const m = st.min ?? recMin(total);
+    const m = (st.min != null) ? st.min : recMin(total);
     document.getElementById("min"+sq.n).textContent = fmt(m);
     document.getElementById("rec"+sq.n).textContent = `권장 약 ${fmt(recMin(total))}분 (전체의 12.5%)`;
     const inp = document.querySelector(`input[data-k=min][data-n="${sq.n}"]`);
@@ -577,7 +577,7 @@ document.addEventListener("input", e=>{
     const st = state.seqs[el.dataset.n-1];
     if(el.dataset.k==="min"){
       st.min = el.value==="" ? null : parseFloat(el.value);
-      document.getElementById("min"+el.dataset.n).textContent = fmt(st.min ?? recMin(state.runtime));
+      document.getElementById("min"+el.dataset.n).textContent = fmt((st.min != null) ? st.min : recMin(state.runtime));
       buildTimeline();
     } else {
       st[el.dataset.k] = el.value;
@@ -603,7 +603,6 @@ document.getElementById("btnSave").onclick = ()=>{
   download(name, JSON.stringify(state, null, 2), "application/json");
   toast("💾 JSON 파일로 저장했어요");
 };
-document.getElementById("btnLoad").onclick = ()=> document.getElementById("fileInput").click();
 document.getElementById("fileInput").onchange = e=>{
   const f = e.target.files[0]; if(!f) return;
   const r = new FileReader();
@@ -631,7 +630,7 @@ document.getElementById("btnExport").onclick = ()=>{
     md += `## ${a.actName} — ${a.actDesc}\n\n`;
     a.seqs.forEach(sq=>{
       const st = state.seqs[sq.n-1];
-      const m = fmt(st.min ?? recMin(total));
+      const m = fmt((st.min != null) ? st.min : recMin(total));
       md += `### ${sq.n}장 · ${sq.name}${st.title? ` — ${st.title}`:""} ${st.done?"✅":""}\n`;
       md += `*${sq.sub}* · **${m}분**\n\n`;
       md += `${st.content || "_내용 미작성_"}\n\n`;

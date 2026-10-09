@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>다큐 스트럭처 스튜디오 — 3막 8장</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pretendard/1.3.9/static/pretendard-dynamic-subset.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PptxGenJS/3.12.0/pptxgen.bundle.min.js"></script>
 <style>
 :root{
   --bg:#101216; --bg2:#171a20; --card:#1d2129; --card2:#232834;
@@ -228,6 +230,17 @@ select:focus{border-color:var(--gold)}
 }
 .toast.show{transform:translateX(-50%) translateY(0)}
 
+/* ---------- 내보내기 선택창 ---------- */
+.modal-bg{position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:90; display:none; align-items:center; justify-content:center}
+.modal-bg.show{display:flex}
+.modal{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:22px; width:min(92vw,400px); box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.modal h3{font-size:15.5px; margin-bottom:4px}
+.modal p{font-size:12.5px; color:var(--sub); margin-bottom:14px}
+.modal .opt{display:block; width:100%; text-align:left; padding:12px 14px; margin-bottom:8px; background:var(--bg2); border:1px solid var(--line); border-radius:10px; color:var(--txt); cursor:pointer; font-size:14px; font-weight:600; transition:.15s}
+.modal .opt:hover{border-color:var(--gold)}
+.modal .opt small{display:block; color:var(--faint); font-size:11.5px; font-weight:400; margin-top:2px}
+.modal .cancel{width:100%; margin-top:4px}
+
 /* ---------- 구조 편집 ---------- */
 .act-head{border-color:var(--ac,var(--gold))}
 .seq-num{background:var(--ac,var(--gold))}
@@ -273,7 +286,7 @@ select:focus{border-color:var(--gold)}
     <button class="btn danger" id="btnReset" title="모든 내용을 지우고 새로 시작">🗑️ 초기화</button>
     <label class="btn" for="fileInput" role="button" tabindex="0" style="display:inline-block">📂 불러오기</label>
     <button class="btn" id="btnSave">💾 JSON 저장</button>
-    <button class="btn primary" id="btnExport">📄 기획안 내보내기</button>
+    <button class="btn primary" id="btnExport">📤 기획안 내보내기</button>
   </div>
 </div>
 
@@ -338,8 +351,19 @@ select:focus{border-color:var(--gold)}
   <p class="note">
     ✅ 입력한 내용은 이 브라우저에 <b>자동 저장</b>돼요. 다음에 다시 접속해도 이어서 작업할 수 있어요.<br>
     막 이름·비율, 장의 이름·가이드 질문, 장 추가·삭제·순서는 <b>✏️ 구조 편집</b>에서 바꿀 수 있어요.<br>
-    다른 기기로 옮기거나 백업하려면 <b>💾 JSON 저장</b> → <b>📂 불러오기</b>를 사용하세요. 완성되면 <b>📄 기획안 내보내기</b>로 마크다운 문서를 받을 수 있어요.
+    다른 기기로 옮기거나 백업하려면 <b>💾 JSON 저장</b> → <b>📂 불러오기</b>를 사용하세요. 완성되면 <b>📤 기획안 내보내기</b>에서 워드·엑셀·PPT 중 골라 받을 수 있어요.
   </p>
+</div>
+
+<div class="modal-bg" id="exportMenu" onclick="if(event.target===this)closeExportMenu()">
+  <div class="modal">
+    <h3>📤 기획안 내보내기</h3>
+    <p>어떤 형식으로 내보낼까요?</p>
+    <button class="opt" onclick="runExport('word')">📄 워드 문서 (.doc)<small>워드·한컴오피스에서 열어 이어서 편집하는 문서</small></button>
+    <button class="opt" onclick="runExport('excel')">📊 엑셀 (.xlsx)<small>표 형태 — 기획 개요·구성안·촬영 콘티 3개 시트</small></button>
+    <button class="opt" onclick="runExport('ppt')">📽️ 파워포인트 (.pptx)<small>회의·보고용 슬라이드 — 장마다 한 장씩</small></button>
+    <button class="btn cancel" onclick="closeExportMenu()">취소</button>
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -946,7 +970,7 @@ document.getElementById("fileInput").onchange = e=>{
   r.readAsText(f);
   e.target.value = "";
 };
-document.getElementById("btnExport").onclick = ()=>{
+function exportMarkdown(){
   const t = state.title || "제목 미정";
   const total = state.runtime||60;
   const nAct = state.structure.length, nSeq = flat().length;
@@ -981,7 +1005,174 @@ document.getElementById("btnExport").onclick = ()=>{
   });
   download(t+"_"+structLabel()+"_기획안.md", md, "text/markdown");
   toast("📄 기획안(.md)을 내보냈어요");
-};
+}
+
+function exportExcel(){
+  const t = state.title || "제목 미정";
+  const total = state.runtime||60;
+  const fl = flat();
+  const done = fl.filter(x=>x.s.done).length;
+  const wb = XLSX.utils.book_new();
+
+  /* 시트 1 — 기획 개요 */
+  const ov = [
+    ["다큐 스트럭처 스튜디오 기획안", ""],
+    ["작품 제목", t],
+    ["로그라인", state.logline||""],
+    ["기획의도", state.intent||""],
+    ["메인테마", state.theme||""],
+    ["중심 질문", state.question||""],
+    ["주제메시지", state.message||""],
+    ["주요 등장인물 / 소재", state.cast||""],
+    ["총 러닝타임(분)", total],
+    ["구조", structLabel()],
+    ["진행률", done + "/" + fl.length + "장 완료"],
+    ["내보낸 날짜", new Date().toLocaleString("ko-KR")]
+  ];
+  const ws1 = XLSX.utils.aoa_to_sheet(ov);
+  ws1["!cols"] = [{wch:18},{wch:90}];
+  XLSX.utils.book_append_sheet(wb, ws1, "기획 개요");
+
+  /* 시트 2 — 구성안 (한 장이 한 줄) */
+  const rows = [["막","장","장 이름","부제","소제목","러닝타임(분)","완료","내용·시놉시스","🎤 인터뷰","🎬 현장·B-roll","🗄️ 아카이브","가이드 질문"]];
+  fl.forEach(({s,a,n})=>{
+    rows.push([a.actName||"", n+"장", s.name||"", s.sub||"", s.title||"", fmt(seqMin(a,s)), s.done?"완료":"", s.content||"", s.interview||"", s.broll||"", s.archive||"", (s.guide||[]).join("\n")]);
+  });
+  const ws2 = XLSX.utils.aoa_to_sheet(rows);
+  ws2["!cols"] = [{wch:14},{wch:5},{wch:22},{wch:28},{wch:20},{wch:11},{wch:6},{wch:55},{wch:55},{wch:35},{wch:35},{wch:40}];
+  XLSX.utils.book_append_sheet(wb, ws2, "구성안");
+
+  /* 시트 3 — 촬영 콘티 (컷이 하나라도 있을 때만) */
+  const crows = [["장","장 이름","컷","샷 크기","앵글·무빙","화면 내용","오디오","길이(초)"]];
+  fl.forEach(({s,n})=>{
+    (s.shots||[]).forEach((sh,i)=>{
+      crows.push([n+"장", s.name||"", i+1, sh.size||"", sh.move||"", sh.desc||"", sh.audio||"", sh.dur||""]);
+    });
+  });
+  if(crows.length>1){
+    const ws3 = XLSX.utils.aoa_to_sheet(crows);
+    ws3["!cols"] = [{wch:6},{wch:18},{wch:5},{wch:18},{wch:14},{wch:50},{wch:22},{wch:9}];
+    XLSX.utils.book_append_sheet(wb, ws3, "촬영 콘티");
+  }
+
+  XLSX.writeFile(wb, t+"_"+structLabel()+"_기획안.xlsx");
+  toast("📊 엑셀 기획안(.xlsx)을 내보냈어요");
+}
+
+function nl2br(v){ return esc(v).replace(/\n/g,"<br>"); }
+
+function exportWord(){
+  const t = state.title || "제목 미정";
+  const total = state.runtime||60;
+  const fl = flat();
+  const ovRow = (k,v)=> v ? `<tr><th style="width:110px">${esc(k)}</th><td>${nl2br(v)}</td></tr>` : "";
+  let h = `<h1>${esc(t)}</h1><p style="color:#666"><i>${structLabel()} 다큐멘터리 구성안 · ${new Date().toLocaleDateString("ko-KR")}</i></p>`;
+  h += `<table>${ovRow("로그라인",state.logline)}${ovRow("기획의도",state.intent)}${ovRow("메인테마",state.theme)}${ovRow("중심 질문",state.question)}${ovRow("주제메시지",state.message)}${ovRow("주요 인물/소재",state.cast)}${ovRow("총 러닝타임",total+"분")}</table>`;
+  let n = 0;
+  state.structure.forEach(a=>{
+    h += `<h2>${esc(a.actName)}${a.actDesc ? ` <span style="font-weight:normal;font-size:11pt;color:#666">— ${esc(a.actDesc)}</span>` : ""}</h2>`;
+    a.seqs.forEach(s=>{
+      n++;
+      const m = fmt(seqMin(a,s));
+      h += `<h3>${n}장 · ${esc(s.name)||"(이름 없음)"}${s.title ? ` — ${esc(s.title)}` : ""}${s.done ? " ✅" : ""}</h3>`;
+      h += `<p style="color:#666">${s.sub ? `<i>${esc(s.sub)}</i> · ` : ""}<b>${m}분</b></p>`;
+      h += `<p>${s.content ? nl2br(s.content) : "<i>내용 미작성</i>"}</p>`;
+      const src = [];
+      if(s.interview) src.push(`<li><b>🎤 인터뷰</b><br>${nl2br(s.interview)}</li>`);
+      if(s.broll) src.push(`<li><b>🎬 현장·B-roll</b><br>${nl2br(s.broll)}</li>`);
+      if(s.archive) src.push(`<li><b>🗄️ 아카이브</b><br>${nl2br(s.archive)}</li>`);
+      if(src.length) h += `<ul>${src.join("")}</ul>`;
+      if(Array.isArray(s.shots) && s.shots.length){
+        h += `<p><b>🎥 촬영 콘티</b></p><table><tr><th>컷</th><th>샷 크기</th><th>앵글·무빙</th><th>화면 내용</th><th>오디오</th><th>길이(초)</th></tr>`;
+        s.shots.forEach((sh,i)=>{
+          h += `<tr><td style="text-align:center">${i+1}</td><td>${esc(sh.size)}</td><td>${esc(sh.move)}</td><td>${nl2br(sh.desc)}</td><td>${esc(sh.audio)}</td><td style="text-align:center">${esc(sh.dur)}</td></tr>`;
+        });
+        h += `</table>`;
+      }
+    });
+  });
+  const doc = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8"><title>${esc(t)}</title><style>
+    body{font-family:"Malgun Gothic","맑은 고딕",sans-serif; font-size:11pt; line-height:1.65; color:#222}
+    h1{font-size:20pt; margin-bottom:2pt}
+    h2{font-size:14.5pt; margin-top:22pt; padding-bottom:3pt; border-bottom:2px solid #333}
+    h3{font-size:12pt; margin-top:16pt; margin-bottom:2pt}
+    table{border-collapse:collapse; width:100%; margin:8pt 0}
+    th,td{border:1px solid #aaa; padding:5pt 7pt; font-size:10pt; vertical-align:top; text-align:left}
+    th{background:#f0ede6}
+    ul{margin:6pt 0 6pt 18pt}
+    li{margin-bottom:4pt}
+  </style></head><body>${h}</body></html>`;
+  download(t+"_"+structLabel()+"_기획안.doc", "﻿"+doc, "application/msword");
+  toast("📄 워드 기획안(.doc)을 내보냈어요");
+}
+
+function exportPpt(){
+  const t = state.title || "제목 미정";
+  const total = state.runtime||60;
+  const fl = flat();
+  const p = new PptxGenJS();
+  p.layout = "LAYOUT_16x9";
+  const F = "Malgun Gothic";
+  const BG = "101216", GOLD = "E6B453", TXT = "E8EAF0", SUB = "9AA3B5";
+  const cut = (v,len)=>{ v = String(v||""); return v.length>len ? v.slice(0,len)+"…" : v; };
+
+  /* 표지 */
+  let s = p.addSlide(); s.background = {color:BG};
+  s.addText(t, {x:0.6, y:1.5, w:9, h:1.3, fontSize:40, bold:true, color:GOLD, fontFace:F});
+  s.addText(structLabel()+" 다큐멘터리 구성안", {x:0.63, y:2.75, w:9, h:0.5, fontSize:16, color:SUB, fontFace:F});
+  if(state.logline) s.addText(cut(state.logline,200), {x:0.63, y:3.4, w:8.8, h:1.2, fontSize:14, color:TXT, fontFace:F, fit:"shrink"});
+
+  /* 기획 개요 */
+  const ov = [["로그라인",state.logline],["기획의도",state.intent],["메인테마",state.theme],["중심 질문",state.question],["주제메시지",state.message],["주요 인물/소재",state.cast],["총 러닝타임",total+"분"]].filter(x=>x[1]);
+  if(ov.length){
+    s = p.addSlide(); s.background = {color:BG};
+    s.addText("기획 개요", {x:0.5, y:0.35, w:9, h:0.55, fontSize:24, bold:true, color:GOLD, fontFace:F});
+    s.addTable(ov.map(r=>[{text:r[0], options:{bold:true, color:GOLD, fontFace:F, fontSize:12}}, {text:cut(r[1],260), options:{color:TXT, fontFace:F, fontSize:11.5}}]),
+      {x:0.5, y:1.05, w:9.0, colW:[2.0,7.0], border:{pt:0.5, color:"2E3442"}, fill:{color:"1D2129"}, valign:"top", autoPage:true});
+  }
+
+  /* 장별 슬라이드 */
+  let n = 0;
+  state.structure.forEach((a,ai)=>{
+    a.seqs.forEach(sq=>{
+      n++;
+      const m = fmt(seqMin(a,sq));
+      s = p.addSlide(); s.background = {color:BG};
+      s.addText(esc0(a.actName), {x:0.5, y:0.3, w:6, h:0.35, fontSize:12, color:SUB, fontFace:F});
+      s.addText(n+"장 · "+(sq.name||"(이름 없음)")+(sq.title ? " — "+sq.title : ""), {x:0.5, y:0.62, w:9, h:0.6, fontSize:20, bold:true, color:GOLD, fontFace:F, fit:"shrink"});
+      s.addText((sq.sub ? sq.sub+"  ·  " : "")+m+"분"+(sq.done ? "  ·  ✅ 완료" : ""), {x:0.5, y:1.22, w:9, h:0.35, fontSize:11.5, color:SUB, fontFace:F, fit:"shrink"});
+      if(sq.content) s.addText(cut(sq.content,700), {x:0.5, y:1.7, w:5.5, h:3.4, fontSize:12, color:TXT, fontFace:F, valign:"top", fit:"shrink"});
+      const src = [];
+      if(sq.interview) src.push({text:"🎤 인터뷰\n", options:{bold:true, color:GOLD}}, {text:cut(sq.interview,280)+"\n\n", options:{color:TXT}});
+      if(sq.broll) src.push({text:"🎬 현장·B-roll\n", options:{bold:true, color:GOLD}}, {text:cut(sq.broll,180)+"\n\n", options:{color:TXT}});
+      if(sq.archive) src.push({text:"🗄️ 아카이브\n", options:{bold:true, color:GOLD}}, {text:cut(sq.archive,180), options:{color:TXT}});
+      if(src.length) s.addText(src, {x:6.2, y:1.7, w:3.3, h:3.4, fontSize:10, fontFace:F, valign:"top", fill:{color:"171A20"}, fit:"shrink"});
+      if(Array.isArray(sq.shots) && sq.shots.length) s.addText("🎥 촬영 콘티 "+sq.shots.length+"컷 — 상세는 엑셀 내보내기 참고", {x:0.5, y:5.15, w:9, h:0.3, fontSize:10, color:SUB, fontFace:F});
+    });
+  });
+  function esc0(v){ return String(v==null?"":v); }
+  p.writeFile({fileName: t+"_"+structLabel()+"_기획안.pptx"}).then(()=>toast("📽️ PPT 기획안(.pptx)을 내보냈어요"));
+}
+
+/* ---------- 내보내기 선택창 ---------- */
+function openExportMenu(){ document.getElementById("exportMenu").classList.add("show"); }
+function closeExportMenu(){ document.getElementById("exportMenu").classList.remove("show"); }
+function runExport(kind){
+  closeExportMenu();
+  try{
+    if(kind==="word"){ exportWord(); }
+    else if(kind==="excel"){
+      if(typeof XLSX === "undefined"){ toast("⚠️ 엑셀 모듈을 못 불러왔어요 — 인터넷 연결을 확인하거나 워드로 내보내 보세요"); return; }
+      exportExcel();
+    }
+    else if(kind==="ppt"){
+      if(typeof PptxGenJS === "undefined"){ toast("⚠️ PPT 모듈을 못 불러왔어요 — 인터넷 연결을 확인하거나 워드로 내보내 보세요"); return; }
+      exportPpt();
+    }
+  }catch(e){ toast("⚠️ 내보내기에 실패했어요"); }
+}
+
+document.getElementById("btnExport").onclick = openExportMenu;
 
 /* ================= 하이드레이션 ================= */
 function hydrate(){
